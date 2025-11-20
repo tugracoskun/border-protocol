@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Border Protocol</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* ANA STİL */
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Consolas', 'Courier New', monospace; user-select: none; }
+        
+        /* TERMAL EFEKTLER */
+        #thermal-noise {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            opacity: 0.15; pointer-events: none; z-index: 5; mix-blend-mode: overlay;
+        }
+        #scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02) 1px, transparent 1px, transparent 4px);
+            pointer-events: none; z-index: 6;
+        }
+        #vignette {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, transparent 40%, rgba(0,0,0,0.98) 100%);
+            pointer-events: none; z-index: 7;
+        }
+
+        /* HUD LAYER */
+        #hud-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; padding: 30px; box-sizing: border-box;
+            color: rgba(220, 220, 220, 0.9);
+            text-shadow: 1px 1px 0 #000;
+            display: flex; flex-direction: column; justify-content: space-between;
+            z-index: 10;
+        }
+
+        .hud-top {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            font-size: 14px; font-weight: bold; letter-spacing: 1px;
+        }
+
+        .hud-box {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px;
+            backdrop-filter: blur(2px);
+        }
+
+        /* TAKTİK HARİTA */
+        #tactical-map-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 10, 0, 0.9); z-index: 40; display: none;
+            align-items: center; justify-content: center; flex-direction: column;
+            backdrop-filter: blur(10px); cursor: crosshair; pointer-events: auto;
+        }
+        #tactical-canvas {
+            border: 2px solid #44ff44; box-shadow: 0 0 50px #44ff44;
+            background: repeating-linear-gradient(0deg, transparent, transparent 49px, rgba(0, 255, 0, 0.1) 50px);
+            background-color: #001100;
+        }
+        .map-title { font-size: 32px; color: #44ff44; font-weight: 900; margin-bottom: 10px; text-shadow: 0 0 20px #44ff44; }
+
+
+        /* XP BAR */
+        .xp-container {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            width: 200px; text-align: center; opacity: 0.8;
+        }
+        .xp-bar-bg { width: 100%; height: 4px; background: rgba(255,255,255,0.2); margin-top: 3px; }
+        .xp-bar-fill { width: 0%; height: 100%; background: #fff; transition: width 0.3s; }
+        
+        /* MINIMAP */
+        #minimap-container {
+            position: absolute; bottom: 30px; right: 30px;
+            width: 180px; height: 180px;
+            background: rgba(0, 10, 0, 0.9);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            overflow: hidden;
+            box-shadow: 0 0 15px rgba(0,0,0,0.8);
+        }
+        
+        /* SİLAH DURUMU */
+        #weapon-status {
+            position: absolute; bottom: 30px; right: 230px;
+            text-align: right;
+        }
+        .weapon-active { color: #ffffaa; text-shadow: 0 0 8px #ffffaa; }
+
+        /* RETICLE */
+        .center-reticle {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 100%; height: 100%; pointer-events: none;
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.1s;
+        }
+        .reticle-svg { width: 300px; height: 300px; opacity: 0.8; transition: transform 0.1s; }
+        
+        /* HEDEF KİLİDİ */
+        #target-box {
+            position: absolute; width: 60px; height: 100px; 
+            border: 2px solid #fff; display: none;
+            box-shadow: 0 0 0 1px #000, 0 0 10px rgba(255,255,255,0.5); 
+            transition: all 0.05s;
+        }
+        .target-label {
+            position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+            background: #fff; color: black; font-size: 9px; font-weight: bold; padding: 1px 4px; white-space: nowrap;
+        }
+
+        /* DRONE UI */
+        #drone-ui { display: none; position: absolute; top: 100px; right: 30px; text-align: right; color: #fff; }
+        .drone-border { border: 2px solid #fff; padding: 5px 10px; display: inline-block; font-weight: bold; background: rgba(0,0,0,0.5); }
+
+        /* AI MESAJ */
+        #ai-msg-container {
+            position: absolute; bottom: 100px; left: 30px; width: 300px;
+            font-size: 13px; line-height: 1.4; color: #fff; 
+            background: linear-gradient(90deg, rgba(0,0,0,0.8), transparent); padding: 10px;
+            border-left: 4px solid #fff; opacity: 0; transition: opacity 0.5s;
+        }
+
+        /* CONTROLS */
+        .controls-hint {
+            text-align: center; opacity: 0.6; font-size: 11px; letter-spacing: 2px;
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+        }
+        .mode-tag { font-size: 20px; font-weight: 900; margin-bottom: 5px; display: block; }
+
+        /* Düşman Üzerindeki İşaret */
+        .enemy-marker {
+            position: absolute; width: 10px; height: 10px; border-radius: 50%; background: red;
+            display: none;
+        }
+
+        /* BAŞLANGIÇ */
+        #start-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #080808; z-index: 50; color: #eee;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .btn {
+            border: 2px solid #fff; padding: 15px 60px; background: #222; color: #fff;
+            font-family: inherit; font-weight: bold; font-size: 18px; cursor: pointer; margin-top: 40px;
+            transition: 0.2s; letter-spacing: 2px;
+        }
+        .btn:hover { background: #fff; color: #000; }
+
+        @keyframes blink { 50% { opacity: 0; } }
+        .blinking-text { animation: blink 1s infinite; color: #ff3333; }
+    </style>
+</head>
+<body>
+
+    <div id="thermal-noise"></div>
+    <div id="scanlines"></div>
+    <div id="vignette"></div>
+
+    <!-- Taktik Harita Modu -->
+    <div id="tactical-map-layer">
+        <div class="map-title">TAKTİK HARİTA</div>
+        <div class="text-green-400 mb-2 text-sm">HEDEFİ SEÇMEK İÇİN TIKLAYIN</div>
+        <canvas id="tactical-canvas" width="600" height="600"></canvas>
+        <div class="mt-4 text-xs text-gray-400">[M] HARİTAYI KAPAT</div>
+    </div>
+
+    <div id="target-box"><div class="target-label blinking-text">TGT KİLİT</div></div>
+
+    <div id="hud-layer">
+        <div class="hud-top">
+            <div class="hud-box">
+                <div>ZOOM: <span id="zoom-level">1.0</span>x</div>
+            </div>
+            <div class="hud-box text-right">
+                <div>İMHA: <span id="kill-count">0</span></div>
+                <div>KONUM: GÖZCÜ-1</div>
+            </div>
+        </div>
+
+        <div class="xp-container">
+            <div class="text-xs font-bold">RÜTBE <span id="level-num">1</span></div>
+            <div class="xp-bar-bg"><div class="xp-bar-fill" id="xp-fill"></div></div>
+        </div>
+
+        <div class="center-reticle" id="reticle-container">
+            <svg class="reticle-svg" viewBox="0 0 100 100">
+                <line x1="45" y1="50" x2="55" y2="50" stroke="white" stroke-width="0.5" />
+                <line x1="50" y1="45" x2="50" y2="55" stroke="white" stroke-width="0.5" />
+                <path d="M 30 30 L 35 30 M 30 30 L 30 35" stroke="white" stroke-width="0.5" fill="none"/>
+                <path d="M 70 30 L 65 30 M 70 30 L 70 35" stroke="white" stroke-width="0.5" fill="none"/>
+                <path d="M 30 70 L 35 70 M 30 70 L 30 65" stroke="white" stroke-width="0.5" fill="none"/>
+                <path d="M 70 70 L 65 70 M 70 70 L 70 65" stroke="white" stroke-width="0.5" fill="none"/>
+                <line x1="30" y1="50" x2="40" y2="50" stroke="white" stroke-width="0.2" stroke-dasharray="2,1"/>
+                <line x1="60" y1="50" x2="70" y2="50" stroke="white" stroke-width="0.2" stroke-dasharray="2,1"/>
+            </svg>
+        </div>
+
+        <div id="drone-ui">
+            <div class="drone-border">KAMİKAZE GÖRÜNTÜSÜ</div>
+            <div class="text-xs mt-1">SİNYAL: %98</div>
+            <div class="text-xs mt-1" id="drone-speed">İRTİFA: 0</div>
+        </div>
+
+        <!-- Minimap -->
+        <div id="minimap-container">
+            <canvas id="minimap-canvas" width="200" height="200"></canvas>
+        </div>
+
+        <div id="weapon-status">
+            <div class="text-xs font-bold mb-1 opacity-70">SİSTEMLER</div>
+            <div class="text-sm">
+                <i class="fas fa-crosshairs mr-1 weapon-active"></i> 30mm MK44
+                <br>
+                <span id="cluster-status" class="opacity-40"><i class="fas fa-bomb mr-1"></i> MİSKET (LVL 2)</span>
+            </div>
+        </div>
+
+        <div id="ai-msg-container">
+            <div class="text-xs font-bold mb-1 opacity-70">KOMUTA:</div>
+            <div id="ai-msg">...</div>
+        </div>
+
+        <div class="controls-hint">
+            <span id="mode-text" class="font-bold block mb-1 text-white">GÖZCÜ KULESİ</span>
+            [SCROLL] ZOOM // [SOL] ATEŞ // [SAĞ] MİSKET // [M] HARİTA // [F] DRONE
+        </div>
+    </div>
+
+    <div id="start-screen">
+        <h1 class="text-8xl font-black tracking-tighter mb-2 text-white">BORDER OPS</h1>
+        <h2 class="text-xl tracking-[8px] text-gray-400 mb-12">WATCHTOWER // COMMANDER</h2>
+        <div class="text-center text-gray-500 text-xs mb-4">
+            <p>HEDEF: SINIR İHLALİNİ ENGELLE</p>
+            <p>DÜŞMANLARI İMHA ET, SEVİYE ATLA, YENİ SİLAHLAR AÇ</p>
+        </div>
+        <button class="btn" onclick="startGame()">BAŞLAT</button>
+    </div>
+
+    <script>
+        const Input = {
+            keys: {},
+            init: function() {
+                document.addEventListener('keydown', e => this.keys[e.code] = true);
+                document.addEventListener('keyup', e => this.keys[e.code] = false);
+            },
+            isDown: function(code) { return !!this.keys[code]; }
+        };
+
+        const AudioSys = {
+            ctx: null,
+            masterGain: null,
+            heliNode: null,
+            droneNode: null,
+            radioStaticBuffer: null,
+
+            init: function() {
+                window.AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+                this.masterGain = this.ctx.createGain();
+                this.masterGain.gain.value = 0.4;
+                this.masterGain.connect(this.ctx.destination);
+                this.createRadioStatic();
+            },
+            createBrownNoise: function() {
+                const bufferSize = this.ctx.sampleRate * 2;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                let lastOut = 0;
+                for (let i = 0; i < bufferSize; i++) {
+                    const white = Math.random() * 2 - 1;
+                    lastOut = (lastOut + (0.02 * white)) / 1.02;
+                    data[i] = lastOut * 3.5;
+                }
+                return buffer;
+            },
+            createRadioStatic: function() {
+                const duration = 0.3;
+                const bufferSize = this.ctx.sampleRate * duration;
+                this.radioStaticBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = this.radioStaticBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.1;
+            },
+            playRadioSquelch: function() {
+                if(!this.ctx || !this.radioStaticBuffer) return;
+                const src = this.ctx.createBufferSource();
+                src.buffer = this.radioStaticBuffer;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass'; filter.frequency.value = 1500;
+                src.connect(filter); filter.connect(this.masterGain);
+                src.start();
+            },
+            startHeliSound: function() {
+                if (!this.ctx) return;
+                const noiseBuffer = this.createBrownNoise();
+                const noise = this.ctx.createBufferSource(); noise.buffer = noiseBuffer; noise.loop = true;
+                const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 150;
+                const modGain = this.ctx.createGain();
+                const lfo = this.ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 8;
+                const lfoGain = this.ctx.createGain(); lfoGain.gain.value = 0.3;
+                lfo.connect(lfoGain); lfoGain.connect(modGain.gain);
+                noise.connect(filter); filter.connect(modGain); modGain.connect(this.masterGain);
+                noise.start(); lfo.start();
+                this.heliNode = { noise, lfo };
+            },
+            startDroneSound: function() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = 150;
+                const gain = this.ctx.createGain(); gain.gain.value = 0.05;
+                const filter = this.ctx.createBiquadFilter(); filter.type = 'bandpass'; filter.frequency.value = 1000;
+                osc.connect(filter); filter.connect(gain); gain.connect(this.masterGain);
+                osc.start();
+                this.droneNode = { osc, gain, filter };
+            },
+            updateDroneSound: function(speedRatio) {
+                if(this.droneNode) {
+                     const targetFreq = 150 + (speedRatio * 500);
+                     this.droneNode.osc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.1);
+                }
+            },
+            stopDroneSound: function() {
+                if(this.droneNode) {
+                    this.droneNode.osc.stop(); this.droneNode = null;
+                }
+            },
+            playMachineGun: function() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(20, this.ctx.currentTime + 0.08);
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'highpass'; filter.frequency.value = 800;
+                osc.connect(filter); filter.connect(gain); gain.connect(this.masterGain);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.09);
+            },
+            playExplosion: function(pitch = 300) {
+                if (!this.ctx) return;
+                const buffer = this.createBrownNoise();
+                const noise = this.ctx.createBufferSource(); noise.buffer = buffer;
+                const filter = this.ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = pitch;
+                const gain = this.ctx.createGain(); gain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 1.5);
+                noise.connect(filter); filter.connect(gain); gain.connect(this.masterGain);
+                noise.start();
+            },
+            playDroneMotor: function(active) {
+                if(!this.droneOsc && active) {
+                    this.startDroneSound();
+                } else if (this.droneNode && !active) {
+                    this.stopDroneSound();
+                }
+            },
+            playClusterPop: function() {
+                 if (!this.ctx) return;
+                 const osc = this.ctx.createOscillator();
+                 osc.type = 'square';
+                 osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+                 osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.1);
+                 const gain = this.ctx.createGain();
+                 gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                 gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+                 osc.connect(gain); gain.connect(this.masterGain);
+                 osc.start(); osc.stop(this.ctx.currentTime + 0.15);
+            }
+        };
+
+        const GeminiAI = {
+            messages: ["Sınır güvenliği ihlali.", "Kuzey sektöründe hareketlilik.", "Görüntü net.", "Drone sistemleri hazır.", "Hattı koruyun."],
+            speak: function(text) {
+                const container = document.getElementById('ai-msg-container');
+                const el = document.getElementById('ai-msg');
+                el.innerText = text; container.style.opacity = 1;
+                AudioSys.playRadioSquelch();
+                setTimeout(() => { container.style.opacity = 0; }, 3000);
+            }
+        };
+
+        let scene, camera, renderer;
+        let watchtower, drone;
+        let enemies = [], particles = [], projectiles = [];
+        let isGameActive = false;
+        let isMapOpen = false;
+        let score = 0;
+        let level = 1;
+        let mode = 'tower';
+        const xpThresholds = [10, 30, 60]; 
+        let isTriggerPulled = false;
+        let lastShotTime = 0;
+        const clock = new THREE.Clock();
+        const mouse = new THREE.Vector2();
+        const raycaster = new THREE.Raycaster();
+        let smokeTexture;
+
+        // ZOOM AYARLARI
+        let targetFov = 60;
+        let currentFov = 60;
+
+        function createSmokeTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(64,64,0,64,64,64);
+            grad.addColorStop(0, 'rgba(255,255,255,1)'); 
+            grad.addColorStop(0.4, 'rgba(200,200,200,0.5)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)'); 
+            ctx.fillStyle = grad; ctx.fillRect(0,0,128,128);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function generateNoiseTexture() {
+            const size = 512; const canvas = document.createElement('canvas');
+            canvas.width = size; canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(size, size);
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                const val = Math.floor(Math.random() * 255);
+                imgData.data[i] = val; imgData.data[i+1] = val; imgData.data[i+2] = val; imgData.data[i+3] = 255;
+            }
+            ctx.putImageData(imgData, 0, 0); return canvas.toDataURL();
+        }
+
+        function init() {
+            Input.init();
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x222222); 
+            scene.fog = new THREE.FogExp2(0x222222, 0.004);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1200);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            smokeTexture = createSmokeTexture();
+            document.getElementById('thermal-noise').style.backgroundImage = `url(${generateNoiseTexture()})`;
+
+            const ambient = new THREE.AmbientLight(0xffffff, 0.8); scene.add(ambient);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.5); dirLight.position.set(0, 100, 50); scene.add(dirLight);
+
+            createEnvironment();
+            createWatchtower();
+
+            window.addEventListener('resize', onResize);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mousedown', onMouseDown);
+            document.addEventListener('mouseup', onMouseUp);
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('wheel', onScroll);
+
+            const tacticalCanvas = document.getElementById('tactical-canvas');
+            if(tacticalCanvas) {
+                tacticalCanvas.addEventListener('click', onMapClick);
+            }
+
+            animate();
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            AudioSys.init();
+            AudioSys.startHeliSound();
+            isGameActive = true;
+            GeminiAI.speak("Bölge savunması başladı.");
+            setInterval(() => {
+                if(isGameActive && !isMapOpen && enemies.length < 40) {
+                    if(Math.random() > 0.6) spawnSquad(); else spawnEnemy();
+                }
+            }, 2000);
+        }
+
+        function createEnvironment() {
+            const geo = new THREE.PlaneGeometry(1200, 1200, 128, 128);
+            const pos = geo.attributes.position;
+            for(let i=0; i<pos.count; i++){
+                const x = pos.getX(i); const y = pos.getY(i);
+                const z = (Math.sin(x*0.02)*Math.cos(y*0.02)*5) + (Math.random()-0.5);
+                pos.setZ(i, z);
+            }
+            geo.computeVertexNormals();
+            const mat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+            const terrain = new THREE.Mesh(geo, mat);
+            terrain.rotation.x = -Math.PI/2; terrain.name = "Ground";
+            scene.add(terrain);
+
+            // GRID HELPER (YENİ)
+            const grid = new THREE.GridHelper(1200, 60, 0x44ff44, 0x225522);
+            grid.position.y = 0.5;
+            grid.material.opacity = 0.15;
+            grid.material.transparent = true;
+            scene.add(grid);
+
+            const wallGeo = new THREE.BoxGeometry(1200, 20, 5);
+            const wallMat = new THREE.MeshBasicMaterial({ color: 0x111111, wireframe: true });
+            const wall = new THREE.Mesh(wallGeo, wallMat);
+            wall.position.set(0, 10, 20); scene.add(wall);
+        }
+
+        function createWatchtower() {
+            watchtower = new THREE.Group();
+            watchtower.position.set(0, 45, 25); 
+            scene.add(watchtower);
+            camera.position.copy(watchtower.position);
+            camera.lookAt(0, 0, -200);
+        }
+
+        function spawnSquad() {
+            const x = (Math.random() - 0.5) * 800; const z = -500;
+            const group = new THREE.Group(); 
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const chassis = new THREE.Mesh(new THREE.BoxGeometry(4, 2, 7), mat); chassis.position.y = 1; group.add(chassis);
+            const turret = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 2), mat); turret.position.y = 2.5; group.add(turret);
+            group.position.set(x, 2, z); group.lookAt(x, 2, 100);
+            group.userData = { hp: 40, speed: 0.04, type: 'vehicle' }; group.name = "Enemy";
+            scene.add(group); enemies.push(group);
+            [[ -3, -3], [3, -3], [-3, -6], [3, -6]].forEach(off => spawnEnemy(x + off[0], z + off[1]));
+        }
+
+        function spawnEnemy(startX, startZ) {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffffff }); 
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.4, 0.5), mat); torso.position.y = 1.1; group.add(torso);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.4), mat); head.position.y = 2.0; group.add(head);
+            const x = startX !== undefined ? startX : (Math.random() - 0.5) * 800;
+            const z = startZ !== undefined ? startZ : -450;
+            const ray = new THREE.Raycaster(new THREE.Vector3(x, 200, z), new THREE.Vector3(0,-1,0));
+            const hits = ray.intersectObject(scene.getObjectByName("Ground"));
+            if(hits.length > 0) group.position.y = hits[0].point.y;
+            group.position.set(x, group.position.y, z); group.lookAt(x, group.position.y, 100);
+            group.userData = { hp: 4, speed: 0.06 + Math.random() * 0.03, walkOffset: Math.random() * 100, type: 'infantry' }; group.name = "Enemy";
+            scene.add(group); enemies.push(group);
+        }
+
+        function toggleMap() {
+            isMapOpen = !isMapOpen;
+            const mapLayer = document.getElementById('tactical-map-layer');
+            if(isMapOpen) {
+                mapLayer.style.display = 'flex';
+                document.exitPointerLock();
+                drawTacticalMap();
+            } else {
+                mapLayer.style.display = 'none';
+                document.body.requestPointerLock();
+            }
+        }
+
+        function drawTacticalMap() {
+            const canvas = document.getElementById('tactical-canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#001100'; ctx.fillRect(0, 0, 600, 600);
+            ctx.strokeStyle = '#004400'; ctx.lineWidth = 1;
+            for(let i=0; i<600; i+=50) {
+                ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,600); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(600,i); ctx.stroke();
+            }
+            ctx.fillStyle = '#00ff00'; ctx.beginPath(); ctx.arc(300, 550, 10, 0, Math.PI*2); ctx.fill();
+            enemies.forEach(e => {
+                const mapX = 300 + e.position.x / 2; 
+                const mapY = 550 + e.position.z / 2; 
+                if(mapX>0 && mapX<600 && mapY>0 && mapY<600) {
+                    ctx.fillStyle = '#ff0000';
+                    const size = e.userData.type === 'vehicle' ? 8 : 4;
+                    ctx.fillRect(mapX-size/2, mapY-size/2, size, size);
+                }
+            });
+            if(isMapOpen) requestAnimationFrame(drawTacticalMap);
+        }
+
+        function onMapClick(e) {
+            const rect = e.target.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            const worldX = (mouseX - 300) * 2;
+            const worldZ = (mouseY - 550) * 2;
+            launchDrone(new THREE.Vector3(worldX, 0, worldZ));
+            toggleMap();
+        }
+
+        function launchDrone(targetPos) {
+            if(drone) return; 
+            const group = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.5, 8).rotateX(Math.PI/2), new THREE.MeshBasicMaterial({color:0x444444, wireframe:true}));
+            group.add(body);
+            drone = group;
+            drone.position.copy(watchtower.position).add(new THREE.Vector3(0, 5, 0));
+            drone.lookAt(targetPos);
+            drone.userData = { target: targetPos, state: 'launch', speed: 15.0 };
+            scene.add(drone);
+            AudioSys.playDroneMotor(true);
+            document.getElementById('drone-ui').style.display = 'block';
+            GeminiAI.speak("Koordinat alındı. Kamikaze yolda.");
+        }
+
+        function updateDrone(dt) {
+            if(!drone) return;
+            const data = drone.userData;
+            const target = data.target;
+            
+            // Yerçekimi etkisi (Daha hızlı düşüş)
+            const gravity = 15.0;
+
+            if(data.state === 'launch') {
+                drone.position.y += 20 * dt; 
+                drone.position.add(new THREE.Vector3(0,0,-1).applyQuaternion(drone.quaternion).multiplyScalar(15 * dt)); 
+                if(drone.position.y > 120) data.state = 'cruise';
+            } 
+            else if (data.state === 'cruise') {
+                drone.lookAt(target.x, drone.position.y, target.z);
+                drone.translateZ(50 * dt); 
+                const dist = new THREE.Vector2(drone.position.x, drone.position.z).distanceTo(new THREE.Vector2(target.x, target.z));
+                if(dist < 30) data.state = 'dive';
+            }
+            else if (data.state === 'dive') {
+                drone.lookAt(target);
+                drone.translateZ(80 * dt); // Dalış daha hızlı
+                if(drone.position.y < 2) {
+                    // BÜYÜK PATLAMA (USER REQUEST: DAMAGE AREA)
+                    createExplosion(drone.position, 5.0); // Daha büyük efekt
+                    
+                    // Daha geniş hasar alanı
+                    enemies.forEach(e => { 
+                        if(e.position.distanceTo(drone.position) < 40) killEnemy(e, true); 
+                    });
+                    
+                    scene.remove(drone);
+                    drone = null;
+                    AudioSys.playDroneMotor(false);
+                    document.getElementById('drone-ui').style.display = 'none';
+                    GeminiAI.speak("Vuruş teyit edildi.");
+                }
+            }
+        }
+
+        function fireClusterBomb() {
+            if(level < 2) return;
+            const bomb = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({color: 0xffff00}));
+            bomb.position.copy(watchtower.position);
+            const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+            bomb.userData = { velocity: dir.multiplyScalar(4.0).add(new THREE.Vector3(0, 1, 0)), type: 'cluster_main' };
+            scene.add(bomb); projectiles.push(bomb);
+            GeminiAI.speak("Misket paketi bırakıldı.");
+        }
+
+        function splitCluster(pos) {
+            // ÇATAPAT EFEKTİ: 12-15 PARÇA
+            for(let i=0; i<15; i++) {
+                const sub = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({color:0xffaa00}));
+                sub.position.copy(pos);
+                // Rastgele fırlama
+                sub.userData = { 
+                    velocity: new THREE.Vector3((Math.random()-0.5)*3, Math.random()*1, (Math.random()-0.5)*3).add(new THREE.Vector3(0,-1,0)), 
+                    type: 'cluster_sub',
+                    delay: Math.random() * 0.5 // Rastgele patlama zamanı
+                };
+                scene.add(sub); projectiles.push(sub);
+            }
+            createExplosion(pos, 0.5, true);
+        }
+
+        function createExplosion(pos, scale=1.0, isSmokeOnly=false) {
+            if(!isSmokeOnly) AudioSys.playExplosion();
+            const flash = new THREE.PointLight(0xffffff, 3, 50 * scale);
+            flash.position.copy(pos); scene.add(flash); setTimeout(()=>scene.remove(flash), 80);
+            const count = isSmokeOnly ? 5 : 15 * scale;
+            const mat = new THREE.SpriteMaterial({ map: smokeTexture, color: 0xffffff, transparent: true, opacity: 0.6 });
+            for(let i=0; i<count; i++) {
+                const sprite = new THREE.Sprite(mat.clone());
+                sprite.position.copy(pos);
+                sprite.position.x += (Math.random()-0.5) * 3 * scale;
+                sprite.position.z += (Math.random()-0.5) * 3 * scale;
+                const size = (Math.random() * 5 + 2) * scale;
+                sprite.scale.set(size, size, 1);
+                sprite.userData = {
+                    vel: new THREE.Vector3((Math.random()-0.5)*0.5, Math.random()*0.8, (Math.random()-0.5)*0.5),
+                    life: 1.0, decay: 0.01, grow: 0.1
+                };
+                scene.add(sprite); particles.push(sprite);
+            }
+        }
+
+        function updateMinimap() {
+            const canvas = document.getElementById('minimap-canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 200, 200);
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(100, 100, 40, 0, Math.PI*2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(100, 100, 80, 0, Math.PI*2); ctx.stroke();
+            const angle = (Date.now() * 0.002) % (Math.PI*2);
+            ctx.save(); ctx.translate(100,100); ctx.rotate(angle);
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.1)'; ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,90,0,0.5); ctx.fill(); ctx.restore();
+            ctx.fillStyle = '#00ff00'; ctx.beginPath(); ctx.arc(100, 100, 3, 0, Math.PI*2); ctx.fill();
+            const range = 800;
+            enemies.forEach(e => {
+                const relX = e.position.x - watchtower.position.x;
+                const relZ = e.position.z - watchtower.position.z;
+                const mapX = 100 + (relX / range) * 100;
+                const mapY = 100 + (relZ / range) * 100; 
+                if(mapX > 0 && mapX < 200 && mapY > 0 && mapY < 200) {
+                    ctx.fillStyle = '#ff0000';
+                    const size = e.userData.type === 'vehicle' ? 5 : 2;
+                    ctx.fillRect(mapX-size/2, mapY-size/2, size, size);
+                }
+            });
+        }
+
+        function checkLevelUp() {
+            let targetXp = xpThresholds[level-1] || 9999;
+            if (score >= targetXp) {
+                level++;
+                document.getElementById('level-num').innerText = level;
+                if(level === 2) {
+                    document.getElementById('cluster-status').classList.replace('opacity-40', 'weapon-active');
+                    document.getElementById('cluster-status').classList.add('text-yellow-200');
+                    GeminiAI.speak("Misket bombası yetkisi verildi.");
+                }
+            }
+            let prevXp = level === 1 ? 0 : xpThresholds[level-2];
+            let progress = (score - prevXp) / (targetXp - prevXp);
+            document.getElementById('xp-fill').style.width = `${Math.min(100, progress*100)}%`;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if(!isGameActive || isMapOpen) return;
+
+            const dt = clock.getDelta();
+            const now = Date.now();
+
+            // ZOOM LERP (Scroll ile yumuşak geçiş)
+            currentFov += (targetFov - currentFov) * 0.1;
+            camera.fov = currentFov;
+            camera.updateProjectionMatrix();
+            document.getElementById('zoom-level').innerText = (60 / currentFov).toFixed(1);
+            
+            // Reticle Ölçeklendirme (Zoom yaptıkça küçülür/büyür)
+            const scale = currentFov / 60;
+            document.querySelector('.reticle-svg').style.transform = `scale(${scale})`;
+
+            // NEFES EFEKTİ
+            camera.position.y = 45 + Math.sin(now * 0.002) * 0.1;
+            camera.rotation.z = Math.sin(now * 0.001) * 0.002;
+
+            if(mode === 'tower' && isTriggerPulled && now - lastShotTime > 60) {
+                lastShotTime = now;
+                fireGun();
+                AudioSys.playMachineGun();
+                camera.position.x += (Math.random()-0.5) * 0.1; // Hafif tepme
+            } 
+
+            updateDrone(dt);
+
+            enemies.forEach(e => {
+                e.position.z += e.userData.speed;
+                if(e.userData.type === 'infantry') {
+                    e.position.y = (e.position.y * 0.9) + (Math.sin((now*0.01)+e.userData.walkOffset)*0.1 + 1.0) * 0.1;
+                } else {
+                    e.position.y = 2 + Math.sin(now * 0.005)*0.1;
+                }
+                if(e.position.z > 20) {
+                    scene.remove(e); enemies = enemies.filter(en => en !== e);
+                    GeminiAI.speak("Sınır ihlali!");
+                }
+                
+                // TGT Marker güncelleme (Sadece görünürse)
+                // Basit: Her 0.5 saniyede bir yanıp sönme
+                if(Math.floor(now / 500) % 2 === 0) {
+                   // Burada 3D text veya sprite açılıp kapanabilir, şimdilik HUD Target Box kullanıyoruz
+                }
+            });
+
+            for(let i=projectiles.length-1; i>=0; i--) {
+                const p = projectiles[i];
+                if (p.userData.type === 'cluster_main') {
+                    p.userData.velocity.y -= 0.05; p.position.add(p.userData.velocity);
+                    if (p.position.y < 20) {
+                        splitCluster(p.position);
+                        scene.remove(p); projectiles.splice(i, 1);
+                    }
+                } else if (p.userData.type === 'cluster_sub') {
+                    p.userData.velocity.y -= 0.1; p.position.add(p.userData.velocity);
+                    if(p.position.y < 0) {
+                        // Çatapat patlaması
+                        setTimeout(() => {
+                             createExplosion(p.position, 1.2);
+                             AudioSys.playClusterPop();
+                             enemies.forEach(e => { if(e.position.distanceTo(p.position) < 15) { e.userData.hp -= 5; if(e.userData.hp <= 0) killEnemy(e, true); } });
+                        }, p.userData.delay * 1000);
+                        
+                        scene.remove(p); projectiles.splice(i, 1);
+                    }
+                }
+            }
+
+            for(let i=particles.length-1; i>=0; i--) {
+                const p = particles[i];
+                p.userData.life -= p.userData.decay;
+                p.position.add(p.userData.vel);
+                const s = p.scale.x + p.userData.grow;
+                p.scale.set(s, s, 1);
+                p.material.opacity = p.userData.life * 0.5;
+                if(p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
+            }
+
+            updateDetection();
+            updateMinimap();
+            checkLevelUp();
+            
+            renderer.render(scene, camera);
+        }
+
+        function fireGun() {
+            const rayDir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+            rayDir.x += (Math.random()-0.5) * 0.002; rayDir.y += (Math.random()-0.5) * 0.002;
+            raycaster.set(camera.position, rayDir);
+            const hits = raycaster.intersectObjects(scene.children, true);
+            
+            const tracer = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 20), new THREE.MeshBasicMaterial({ color: 0xffffaa, transparent: true, opacity: 0.8 }));
+            tracer.position.copy(watchtower.position.clone().add(new THREE.Vector3(0,-2,0)));
+            let target = hits.length > 0 ? hits[0].point : camera.position.clone().add(rayDir.multiplyScalar(600));
+            tracer.lookAt(target);
+            scene.add(tracer);
+            
+            let t = 0;
+            const anim = () => { t+=0.3; tracer.position.lerp(target, t); if(t<1) requestAnimationFrame(anim); else scene.remove(tracer); };
+            requestAnimationFrame(anim);
+
+            if(hits.length > 0) {
+                const hit = hits[0];
+                if(hit.distance < 600) {
+                    createExplosion(hit.point, 0.6, true);
+                    enemies.forEach(e => {
+                        if (e.position.distanceTo(hit.point) < 6) {
+                            e.userData.hp -= 5; // BUFF: 30mm hasarı arttı (1 -> 5)
+                            if(e.userData.hp <= 0) killEnemy(e);
+                        }
+                    });
+                }
+            }
+        }
+        
+        function killEnemy(enemy, isExplosion = false) {
+            if(enemy.parent === scene) {
+                const scale = enemy.userData.type === 'vehicle' ? 3.0 : 1.0;
+                createExplosion(enemy.position, scale);
+                scene.remove(enemy);
+                enemies = enemies.filter(e => e !== enemy);
+                score++;
+                document.getElementById('kill-count').innerText = score;
+            }
+        }
+
+        function updateDetection() {
+            raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+            const hits = raycaster.intersectObjects(scene.children, true);
+            const box = document.getElementById('target-box');
+            
+            if(!box) return;
+
+            let hitData = null;
+            for(let hit of hits) {
+                let obj = hit.object;
+                while(obj.parent && obj.parent !== scene) {
+                    if(obj.name === "Enemy" || (obj.parent && obj.parent.name === "Enemy")) {
+                        hitData = hit;
+                        break;
+                    }
+                    obj = obj.parent;
+                }
+                if(hitData) break;
+            }
+            
+            if(hitData) {
+                box.style.display = 'block';
+                const vec = hitData.point.clone().project(camera);
+                const x = (vec.x * .5 + .5) * window.innerWidth;
+                const y = (-(vec.y * .5) + .5) * window.innerHeight;
+                box.style.left = (x - 40) + 'px'; 
+                box.style.top = (y - 60) + 'px';
+            } else {
+                box.style.display = 'none';
+            }
+        }
+
+        function onMouseMove(e) {
+            if(!isGameActive || isMapOpen) return;
+            // Zoom seviyesine göre hassasiyet değişir
+            const sens = (currentFov / 60) * 0.002;
+            camera.rotation.order = "YXZ";
+            camera.rotation.y -= e.movementX * sens;
+            camera.rotation.x -= e.movementY * sens;
+            camera.rotation.y = Math.max(-1.2, Math.min(1.2, camera.rotation.y));
+            camera.rotation.x = Math.max(-0.6, Math.min(0.4, camera.rotation.x));
+        }
+        
+        function onScroll(e) {
+            if(!isGameActive || isMapOpen) return;
+            targetFov += e.deltaY * 0.05;
+            targetFov = Math.max(10, Math.min(60, targetFov)); // 10 FOV = 6x Zoom
+        }
+
+        function onMouseDown(e) {
+            if(!isGameActive || isMapOpen) return;
+            if (document.pointerLockElement !== document.body) document.body.requestPointerLock().catch(e=>{});
+            if(e.button === 0) isTriggerPulled = true; 
+            if(e.button === 2) fireClusterBomb(); 
+        }
+        function onMouseUp() { isTriggerPulled = false; }
+        function onKeyDown(e) { if(e.code === 'KeyM') toggleMap(); }
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+    </script>
+</body>
+</html>
