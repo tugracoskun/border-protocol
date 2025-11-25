@@ -4,48 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Border Protocol</title>
-    <!-- Kütüphaneler -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- Stil -->
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-    <!-- Görsel Efekt Katmanları -->
     <div id="thermal-noise"></div>
     <div id="scanlines"></div>
     <div id="vignette"></div>
 
-    <!-- UI Katmanları -->
     <div id="tactical-map-layer">
         <div class="map-title">TAKTİK HARİTA</div>
         <div class="text-green-400 mb-2 text-sm">HEDEFİ SEÇMEK İÇİN TIKLAYIN</div>
         <canvas id="tactical-canvas" width="600" height="600"></canvas>
-        <div class="mt-4 text-xs text-gray-400">[M] HARİTAYI KAPAT</div>
+        <div class="mt-4 text-xs text-gray-400">[M] KAPAT</div>
     </div>
 
     <div id="target-box"><div class="target-label blinking-text">TGT KİLİT</div></div>
 
     <div id="hud-layer">
         <div class="hud-top">
-            <div class="hud-box">
-                <div>ZOOM: <span id="zoom-level">1.0</span>x</div>
-            </div>
-            <div class="hud-box text-right">
-                <div>İMHA: <span id="kill-count">0</span></div>
-                <div>KONUM: GÖZCÜ-1</div>
-            </div>
+            <div class="hud-box">ZOOM: <span id="zoom-level">1.0</span>x</div>
+            <div class="hud-box text-right">İMHA: <span id="kill-count">0</span></div>
         </div>
 
-        <div class="xp-container">
-            <div class="text-xs font-bold">RÜTBE <span id="level-num">1</span></div>
-            <div class="xp-bar-bg"><div class="xp-bar-fill" id="xp-fill"></div></div>
+        <div class="rank-panel">
+            <div class="rank-icon"><i class="fas fa-chevron-up"></i></div>
+            <div class="rank-info">
+                <div class="rank-label">OPERATÖR</div>
+                <div class="rank-title">RÜTBE <span id="level-num" class="text-green-400">1</span></div>
+                <div class="rank-bar-bg"><div class="rank-bar-fill" id="xp-fill"></div></div>
+            </div>
         </div>
 
         <div class="center-reticle" id="reticle-container">
-            <!-- SVG Reticle Code (Kısaltıldı, CSS ile stilize edilecek) -->
             <svg class="reticle-svg" viewBox="0 0 100 100">
                 <line x1="45" y1="50" x2="55" y2="50" stroke="white" stroke-width="0.5" />
                 <line x1="50" y1="45" x2="50" y2="55" stroke="white" stroke-width="0.5" />
@@ -53,15 +47,28 @@
                 <path d="M 70 30 L 65 30 M 70 30 L 70 35" stroke="white" stroke-width="0.5" fill="none"/>
                 <path d="M 30 70 L 35 70 M 30 70 L 30 65" stroke="white" stroke-width="0.5" fill="none"/>
                 <path d="M 70 70 L 65 70 M 70 70 L 70 65" stroke="white" stroke-width="0.5" fill="none"/>
-                <line x1="30" y1="50" x2="40" y2="50" stroke="white" stroke-width="0.2" stroke-dasharray="2,1"/>
-                <line x1="60" y1="50" x2="70" y2="50" stroke="white" stroke-width="0.2" stroke-dasharray="2,1"/>
             </svg>
         </div>
 
+        <!-- YENİ MİNİMAL NABIZ PANELİ -->
+        <div class="pulse-widget">
+            <div class="pulse-icon-area">
+                <i class="fas fa-heartbeat pulse-beat-anim"></i>
+            </div>
+            <div class="pulse-data">
+                <span id="bpm-display">67</span>
+                <span class="pulse-unit">BPM</span>
+            </div>
+            <!-- Küçük EKG Çizgisi (Süs) -->
+            <svg class="mini-ekg" viewBox="0 0 50 20">
+                <path d="M0 10 L10 10 L15 2 L20 18 L25 10 L50 10" fill="none" stroke="#ef4444" stroke-width="1.5" />
+            </svg>
+            <div class="pulse-alert" id="pulse-warning">!</div>
+        </div>
+
         <div id="drone-ui">
-            <div class="drone-border">KAMİKAZE GÖRÜNTÜSÜ</div>
+            <div class="drone-border">KAMİKAZE</div>
             <div class="text-xs mt-1">SİNYAL: %98</div>
-            <div class="text-xs mt-1" id="drone-speed">İRTİFA: 0</div>
         </div>
 
         <div id="minimap-container">
@@ -81,24 +88,13 @@
             <div class="text-xs font-bold mb-1 opacity-70">KOMUTA:</div>
             <div id="ai-msg">...</div>
         </div>
-
-        <div class="controls-hint">
-            <span id="mode-text" class="font-bold block mb-1 text-white">GÖZCÜ KULESİ</span>
-            [SCROLL] ZOOM // [SOL] ATEŞ // [SAĞ] MİSKET // [M] HARİTA // [F] DRONE
-        </div>
     </div>
 
     <div id="start-screen">
         <h1 class="text-8xl font-black tracking-tighter mb-2 text-white">BORDER OPS</h1>
-        <h2 class="text-xl tracking-[8px] text-gray-400 mb-12">WATCHTOWER // COMMANDER</h2>
-        <div class="text-center text-gray-500 text-xs mb-4">
-            <p>HEDEF: SINIR İHLALİNİ ENGELLE</p>
-            <p>DÜŞMANLARI İMHA ET, SEVİYE ATLA, YENİ SİLAHLAR AÇ</p>
-        </div>
         <button class="btn" id="start-btn">BAŞLAT</button>
     </div>
 
-    <!-- Modül Giriş Noktası -->
     <script type="module" src="js/main.js"></script>
 </body>
 </html>

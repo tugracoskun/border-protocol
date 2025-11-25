@@ -5,7 +5,11 @@ export const GameState = {
     level: 1,
     xpThresholds: [10, 30, 60],
     
-    // Zoom ayarları
+    // NABIZ SİSTEMİ VERİLERİ
+    heartRate: 67, // Başlangıç nabzı
+    maxHeartRate: 200,
+    restingHeartRate: 67,
+    
     targetFov: 60,
     currentFov: 60,
 
@@ -15,5 +19,6 @@ export const GameState = {
         this.level = 1;
         this.currentFov = 60;
         this.targetFov = 60;
+        this.heartRate = 67;
     }
 };
