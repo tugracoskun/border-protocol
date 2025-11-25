@@ -8,15 +8,20 @@ import { DroneSystem } from './entities/DroneSystem.js';
 import { UIManager } from './ui/UIManager.js';
 
 let clock, raycaster;
-let lastShotTime = 0;
+
+// KAMERA AYARLARI
+const CAMERA_SENSITIVITY = 0.002;
+const SMOOTH_FACTOR = 0.2; 
+let targetRotationX = 0;
+let targetRotationY = 0;
 
 function init() {
-    // Sistemleri Başlat
     const { scene, camera, renderer, watchtower } = SceneManager.init();
+    targetRotationY = camera.rotation.y; 
+    
     Input.init();
     UIManager.init();
     
-    // Entity Yöneticilerini Başlat
     EnemyManager.init(scene);
     WeaponSystem.init(scene, camera, watchtower.position);
     DroneSystem.init(scene, watchtower.position);
@@ -24,31 +29,28 @@ function init() {
     clock = new THREE.Clock();
     raycaster = new THREE.Raycaster();
 
-    // Event Listeners
     document.getElementById('start-btn').addEventListener('click', startGame);
+    
     document.addEventListener('keydown', (e) => {
         if(e.code === 'KeyM') UIManager.toggleMap();
     });
+
+    // --- KRİTİK DEĞİŞİKLİK: Tıklama Tepkisi ---
+    // Döngüyü beklemeden, event gelir gelmez ateş et
     document.addEventListener('mousedown', (e) => {
-        if(!GameState.isGameActive || GameState.isMapOpen) return;
-        if(e.button === 2) WeaponSystem.fireClusterBomb();
+        if (!GameState.isGameActive || GameState.isMapOpen) return;
+        
+        // Sol Tık (Anında Ateş)
+        if (e.button === 0) {
+            const shotFired = WeaponSystem.trigger(false); // isAuto = false
+            if (shotFired) applyRecoil();
+        }
     });
-    
-    // Zoom & Mouse Look
+
     document.addEventListener('wheel', (e) => {
         if(!GameState.isGameActive || GameState.isMapOpen) return;
         GameState.targetFov += e.deltaY * 0.05;
         GameState.targetFov = Math.max(10, Math.min(60, GameState.targetFov));
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if(!GameState.isGameActive || GameState.isMapOpen) return;
-        const sens = (GameState.currentFov / 60) * 0.002;
-        camera.rotation.order = "YXZ";
-        camera.rotation.y -= e.movementX * sens;
-        camera.rotation.x -= e.movementY * sens;
-        camera.rotation.y = Math.max(-1.2, Math.min(1.2, camera.rotation.y));
-        camera.rotation.x = Math.max(-0.6, Math.min(0.4, camera.rotation.x));
     });
 
     animate();
@@ -56,12 +58,12 @@ function init() {
 
 function startGame() {
     document.getElementById('start-screen').style.display = 'none';
+    document.body.requestPointerLock();
     AudioSys.init();
     AudioSys.startHeliSound();
     GameState.isGameActive = true;
     UIManager.speak("Bölge savunması başladı.");
 
-    // Düşman Spawner Loop
     setInterval(() => {
         if(GameState.isGameActive && !GameState.isMapOpen && EnemyManager.enemies.length < 40) {
             if(Math.random() > 0.6) EnemyManager.spawnSquad(); 
@@ -70,9 +72,37 @@ function startGame() {
     }, 2000);
 }
 
+function applyRecoil() {
+    targetRotationX += 0.003; 
+    targetRotationY += (Math.random() - 0.5) * 0.002;
+}
+
+function updateCamera() {
+    if (!GameState.isGameActive || GameState.isMapOpen) return;
+    const zoomSensitivity = GameState.currentFov / 60;
+    
+    targetRotationY -= Input.mouse.x * CAMERA_SENSITIVITY * zoomSensitivity;
+    targetRotationX -= Input.mouse.y * CAMERA_SENSITIVITY * zoomSensitivity;
+
+    targetRotationX = Math.max(-0.6, Math.min(0.4, targetRotationX));
+    targetRotationY = Math.max(-1.5, Math.min(1.5, targetRotationY)); 
+
+    SceneManager.camera.rotation.order = "YXZ";
+    SceneManager.camera.rotation.y += (targetRotationY - SceneManager.camera.rotation.y) * SMOOTH_FACTOR;
+    SceneManager.camera.rotation.x += (targetRotationX - SceneManager.camera.rotation.x) * SMOOTH_FACTOR;
+
+    Input.resetMouseDelta();
+}
+
 function animate() {
     requestAnimationFrame(animate);
-    if(!GameState.isGameActive || GameState.isMapOpen) {
+
+    if(GameState.isMapOpen) {
+        if(SceneManager.renderer) SceneManager.renderer.render(SceneManager.scene, SceneManager.camera);
+        return;
+    }
+
+    if(!GameState.isGameActive) {
         if(SceneManager.renderer) SceneManager.renderer.render(SceneManager.scene, SceneManager.camera);
         return;
     }
@@ -80,27 +110,33 @@ function animate() {
     const dt = clock.getDelta();
     const now = Date.now();
 
-    // Zoom Logic
+    updateCamera();
+
     GameState.currentFov += (GameState.targetFov - GameState.currentFov) * 0.1;
     SceneManager.camera.fov = GameState.currentFov;
     SceneManager.camera.updateProjectionMatrix();
     
-    // UI Updates
     document.getElementById('zoom-level').innerText = (60 / GameState.currentFov).toFixed(1);
     const scale = GameState.currentFov / 60;
-    document.querySelector('.reticle-svg').style.transform = `scale(${scale})`;
+    const reticle = document.querySelector('.reticle-svg');
+    if(reticle) reticle.style.transform = `scale(${scale})`;
 
-    // Kamera Sallanma (Nefes)
     SceneManager.camera.position.y = 45 + Math.sin(now * 0.002) * 0.1;
 
-    // Ateş Etme
-    if(Input.isTriggerPulled && now - lastShotTime > 60) {
-        lastShotTime = now;
-        WeaponSystem.fireGun();
-        SceneManager.camera.position.x += (Math.random()-0.5) * 0.1;
+    // --- OTOMATİK ATEŞ (Basılı Tutma) ---
+    // Eğer mouse basılıysa ve ilk tık değilse, WeaponSystem.trigger hız sınırına göre ateş eder
+    if(Input.isLeftMouseDown) {
+        const shotFired = WeaponSystem.trigger(true); // isAuto = true
+        if (shotFired) applyRecoil();
+    }
+    
+    if(Input.isRightMouseDown) {
+        if (now - (WeaponSystem.lastClusterTime || 0) > 1000) { 
+             WeaponSystem.fireClusterBomb();
+             WeaponSystem.lastClusterTime = now;
+        }
     }
 
-    // Güncellemeler
     EnemyManager.update(now);
     WeaponSystem.update();
     DroneSystem.update(dt);
@@ -115,6 +151,8 @@ function updateTargetBox() {
     const hits = raycaster.intersectObjects(SceneManager.scene.children, true);
     const box = document.getElementById('target-box');
     
+    if(!box) return;
+
     let hitData = null;
     for(let hit of hits) {
         let obj = hit.object;
@@ -140,5 +178,4 @@ function updateTargetBox() {
     }
 }
 
-// Başlat
 init();

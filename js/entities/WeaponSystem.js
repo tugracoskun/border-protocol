@@ -12,6 +12,10 @@ export const WeaponSystem = {
     raycaster: new THREE.Raycaster(),
     smokeTexture: null,
     watchtowerPos: null,
+    
+    // --- SERİ ATIŞ AYARI ---
+    lastShotTime: 0,
+    fireRate: 50, // 50ms = Saniyede 20 mermi (Daha seri!)
 
     init(scene, camera, watchtowerPos) {
         this.scene = scene;
@@ -20,35 +24,100 @@ export const WeaponSystem = {
         this.smokeTexture = Helpers.createSmokeTexture();
     },
 
-    fireGun() {
-        const rayDir = new THREE.Vector3(0,0,-1).applyQuaternion(this.camera.quaternion);
-        rayDir.x += (Math.random()-0.5) * 0.002; 
-        rayDir.y += (Math.random()-0.5) * 0.002;
-        
-        this.raycaster.set(this.camera.position, rayDir);
-        const hits = this.raycaster.intersectObjects(this.scene.children, true);
-        
-        // Tracer Efekti
-        const tracer = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 20), new THREE.MeshBasicMaterial({ color: 0xffffaa, transparent: true, opacity: 0.8 }));
-        tracer.position.copy(this.watchtowerPos.clone().add(new THREE.Vector3(0,-2,0)));
-        let target = hits.length > 0 ? hits[0].point : this.camera.position.clone().add(rayDir.multiplyScalar(600));
-        tracer.lookAt(target);
-        this.scene.add(tracer);
-        
-        let t = 0;
-        const anim = () => { t+=0.3; tracer.position.lerp(target, t); if(t<1) requestAnimationFrame(anim); else this.scene.remove(tracer); };
-        requestAnimationFrame(anim);
+    trigger(isAutoFire = false) {
+        const now = Date.now();
+        // Süre dolmadıysa ateş etme
+        if (now - this.lastShotTime < this.fireRate) return false;
 
+        this.lastShotTime = now;
+        this.fireGun();
+        return true; 
+    },
+
+    fireGun() {
+        this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+        const ray = this.raycaster.ray;
+
+        let bestTarget = null;
+        let minDistanceToCamera = Infinity;
+        // Hitbox'ı biraz daha genişlettim, vurmak daha kolay olsun
+        const baseHitThreshold = 4.0; 
+
+        EnemyManager.enemies.forEach(enemy => {
+            const enemyCenter = enemy.position.clone();
+            enemyCenter.y += 1.5; 
+
+            const vecToEnemy = enemyCenter.clone().sub(this.camera.position);
+            const distanceToCam = vecToEnemy.length();
+            if (vecToEnemy.dot(this.camera.getWorldDirection(new THREE.Vector3())) < 0) return;
+
+            const distanceToRay = ray.distanceSqToPoint(enemyCenter);
+            
+            if (distanceToRay < (baseHitThreshold * baseHitThreshold)) {
+                if (distanceToCam < minDistanceToCamera) {
+                    minDistanceToCamera = distanceToCam;
+                    bestTarget = enemy;
+                }
+            }
+        });
+
+        const groundHits = this.raycaster.intersectObjects(this.scene.children.filter(o => o.name === "Ground"), true);
+        let hitPoint = null;
+
+        if (groundHits.length > 0) {
+            if (!bestTarget || groundHits[0].distance < minDistanceToCamera) {
+                hitPoint = groundHits[0].point;
+                bestTarget = null; 
+            } else {
+                hitPoint = bestTarget.position.clone().add(new THREE.Vector3(0, 1.5, 0));
+            }
+        } else {
+            if (bestTarget) hitPoint = bestTarget.position.clone().add(new THREE.Vector3(0, 1.5, 0));
+            else hitPoint = this.camera.position.clone().add(ray.direction.multiplyScalar(600)); 
+        }
+
+        this.createTracer(hitPoint);
+        
+        // Ses efekti her seferinde yeniden başlamasın, hafif randomize edilsin (Makine tüfek sesi takılmasın)
         AudioSys.playMachineGun();
 
-        if(hits.length > 0 && hits[0].distance < 600) {
-            this.createExplosion(hits[0].point, 0.6, true);
-            EnemyManager.enemies.forEach(e => {
-                if (e.position.distanceTo(hits[0].point) < 6) {
-                    this.damageEnemy(e, 5);
-                }
-            });
+        if (bestTarget) {
+            this.createExplosion(hitPoint, 0.8, true); 
+            this.damageEnemy(bestTarget, 10); 
+        } else if (groundHits.length > 0 && (!bestTarget)) {
+            this.createExplosion(hitPoint, 0.5, true); 
         }
+    },
+
+    createTracer(targetPos) {
+        const geometry = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, 0, -5)
+        ]);
+        const material = new THREE.LineBasicMaterial({ color: 0xffffaa, transparent: true, opacity: 0.8 });
+        const tracer = new THREE.Line(geometry, material);
+        
+        const startPos = this.watchtowerPos.clone().add(new THREE.Vector3(0, -2, 0));
+        tracer.position.copy(startPos);
+        tracer.lookAt(targetPos);
+        
+        this.scene.add(tracer);
+
+        // Mermi hızı 40.0 -> Çok hızlı
+        const targetVec = targetPos.clone();
+        let progress = 0;
+        
+        // Tracer animasyonu (Hafif bir mermi yolu efekti)
+        const animateTracer = () => {
+            progress += 0.3; // Daha hızlı gitsin
+            if (progress >= 1) {
+                this.scene.remove(tracer);
+            } else {
+                tracer.position.lerp(targetVec, progress);
+                requestAnimationFrame(animateTracer);
+            }
+        };
+        requestAnimationFrame(animateTracer);
     },
 
     fireClusterBomb() {
@@ -91,14 +160,25 @@ export const WeaponSystem = {
             sprite.scale.set(size, size, 1);
             sprite.userData = {
                 vel: new THREE.Vector3((Math.random()-0.5)*0.5, Math.random()*0.8, (Math.random()-0.5)*0.5),
-                life: 1.0, decay: 0.01, grow: 0.1
+                life: 1.0, decay: 0.05, grow: 0.3
             };
             this.scene.add(sprite); this.particles.push(sprite);
         }
     },
 
-    damageEnemy(enemy, amount, isExplosion = false) {
+    damageEnemy(enemy, amount) {
+        if (!enemy || !enemy.userData) return;
         enemy.userData.hp -= amount;
+        enemy.children.forEach(mesh => {
+            if(mesh.material) {
+                const oldColor = mesh.material.color.getHex();
+                mesh.material.color.setHex(0xff0000); 
+                setTimeout(() => {
+                    if(mesh && mesh.material) mesh.material.color.setHex(oldColor);
+                }, 50);
+            }
+        });
+
         if(enemy.userData.hp <= 0) {
             const scale = enemy.userData.type === 'vehicle' ? 3.0 : 1.0;
             this.createExplosion(enemy.position, scale);
@@ -109,7 +189,6 @@ export const WeaponSystem = {
     },
 
     update() {
-        // Projectiles Update
         for(let i=this.projectiles.length-1; i>=0; i--) {
             const p = this.projectiles[i];
             if (p.userData.type === 'cluster_main') {
@@ -130,8 +209,6 @@ export const WeaponSystem = {
                 }
             }
         }
-
-        // Particles Update
         for(let i=this.particles.length-1; i>=0; i--) {
             const p = this.particles[i];
             p.userData.life -= p.userData.decay;
