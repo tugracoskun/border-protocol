@@ -1,0 +1,71 @@
+body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Consolas', 'Courier New', monospace; user-select: none; }
+
+/* TERMAL EFEKTLER */
+#thermal-noise {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    opacity: 0.15; pointer-events: none; z-index: 5; mix-blend-mode: overlay;
+    background-size: cover;
+}
+#scanlines {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02) 1px, transparent 1px, transparent 4px);
+    pointer-events: none; z-index: 6;
+}
+#vignette {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: radial-gradient(circle, transparent 40%, rgba(0,0,0,0.98) 100%);
+    pointer-events: none; z-index: 7;
+}
+
+/* HUD */
+#hud-layer {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; padding: 30px; box-sizing: border-box;
+    color: rgba(220, 220, 220, 0.9);
+    text-shadow: 1px 1px 0 #000;
+    display: flex; flex-direction: column; justify-content: space-between;
+    z-index: 10;
+}
+.hud-top { display: flex; justify-content: space-between; align-items: flex-start; font-size: 14px; font-weight: bold; letter-spacing: 1px; }
+.hud-box { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.3); padding: 5px 10px; backdrop-filter: blur(2px); }
+
+/* TAKTİK HARİTA */
+#tactical-map-layer {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 10, 0, 0.9); z-index: 40; display: none;
+    align-items: center; justify-content: center; flex-direction: column;
+    backdrop-filter: blur(10px); cursor: crosshair; pointer-events: auto;
+}
+#tactical-canvas {
+    border: 2px solid #44ff44; box-shadow: 0 0 50px #44ff44;
+    background: repeating-linear-gradient(0deg, transparent, transparent 49px, rgba(0, 255, 0, 0.1) 50px);
+    background-color: #001100;
+}
+.map-title { font-size: 32px; color: #44ff44; font-weight: 900; margin-bottom: 10px; text-shadow: 0 0 20px #44ff44; }
+
+/* XP BAR & UI */
+.xp-container { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 200px; text-align: center; opacity: 0.8; }
+.xp-bar-bg { width: 100%; height: 4px; background: rgba(255,255,255,0.2); margin-top: 3px; }
+.xp-bar-fill { width: 0%; height: 100%; background: #fff; transition: width 0.3s; }
+#minimap-container { position: absolute; bottom: 30px; right: 30px; width: 180px; height: 180px; background: rgba(0, 10, 0, 0.9); border: 2px solid rgba(255, 255, 255, 0.5); border-radius: 50%; overflow: hidden; box-shadow: 0 0 15px rgba(0,0,0,0.8); }
+#weapon-status { position: absolute; bottom: 30px; right: 230px; text-align: right; }
+.weapon-active { color: #ffffaa; text-shadow: 0 0 8px #ffffaa; }
+
+/* RETICLE & HEDEF */
+.center-reticle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; height: 100%; pointer-events: none; display: flex; align-items: center; justify-content: center; transition: transform 0.1s; }
+.reticle-svg { width: 300px; height: 300px; opacity: 0.8; transition: transform 0.1s; }
+#target-box { position: absolute; width: 60px; height: 100px; border: 2px solid #fff; display: none; box-shadow: 0 0 0 1px #000, 0 0 10px rgba(255,255,255,0.5); transition: all 0.05s; }
+.target-label { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); background: #fff; color: black; font-size: 9px; font-weight: bold; padding: 1px 4px; white-space: nowrap; }
+
+/* DRONE UI */
+#drone-ui { display: none; position: absolute; top: 100px; right: 30px; text-align: right; color: #fff; }
+.drone-border { border: 2px solid #fff; padding: 5px 10px; display: inline-block; font-weight: bold; background: rgba(0,0,0,0.5); }
+
+/* DİĞER */
+#ai-msg-container { position: absolute; bottom: 100px; left: 30px; width: 300px; font-size: 13px; line-height: 1.4; color: #fff; background: linear-gradient(90deg, rgba(0,0,0,0.8), transparent); padding: 10px; border-left: 4px solid #fff; opacity: 0; transition: opacity 0.5s; }
+.controls-hint { text-align: center; opacity: 0.6; font-size: 11px; letter-spacing: 2px; position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); }
+#start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #080808; z-index: 50; color: #eee; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.btn { border: 2px solid #fff; padding: 15px 60px; background: #222; color: #fff; font-family: inherit; font-weight: bold; font-size: 18px; cursor: pointer; margin-top: 40px; transition: 0.2s; letter-spacing: 2px; }
+.btn:hover { background: #fff; color: #000; }
+@keyframes blink { 50% { opacity: 0; } }
+.blinking-text { animation: blink 1s infinite; color: #ff3333; }
